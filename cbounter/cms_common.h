@@ -250,6 +250,51 @@ CMS_VARIANT(_getitem)(CMS_TYPE *self, PyObject *args)
     return Py_BuildValue("L", CMS_VARIANT(decode) (min_value));
 }
 
+/* Retrieves estimates for the frequencies of multiple elements. */
+static PyObject *
+CMS_VARIANT(_multiple_get)(CMS_TYPE *self, PyObject *args) {
+    PyObject * keysTuple;
+
+    if (!PyArg_ParseTuple(args, "O", &keysTuple))
+        return NULL;
+    if (!PyTuple_Check(keysTuple)) {
+        PyErr_SetString(PyExc_TypeError, "Argument must be a tuple");
+        return NULL;
+    }
+
+    Py_ssize_t numKeys = PyTuple_Size(keysTuple);
+    PyObject * resultTuple = PyTuple_New(numKeys);
+
+    for (Py_ssize_t i = 0; i < numKeys; i++) {
+        PyObject * pkey = PyTuple_GetItem(keysTuple, i);
+        PyObject * free_after = NULL;
+        Py_ssize_t dataLength = 0;
+
+        char * data = CMS_VARIANT(_parse_key)(pkey, &dataLength, &free_after);
+        if (!data) {
+            Py_DECREF(resultTuple);
+            PyErr_SetString(PyExc_ValueError, "An element in the tuple is not a valid string as required");
+            return NULL;
+        }
+
+        uint32_t hash;
+        CMS_CELL_TYPE min_value = -1;
+        for (int i = 0; i < self->depth; i++) {
+            MurmurHash3_x86_32((void *)data, dataLength, i, (void *)&hash);
+            uint32_t bucket = hash & self->hash_mask;
+            CMS_CELL_TYPE value = self->table[i][bucket];
+            if (value < min_value)
+                min_value = value;
+        }
+
+        Py_XDECREF(free_after);
+        PyObject * count = Py_BuildValue("L", CMS_VARIANT(decode)(min_value));
+        PyTuple_SetItem(resultTuple, i, count);
+    }
+
+    return resultTuple;
+}
+
 /* Retrieves estimate of the set cardinality */
 static PyObject *
 CMS_VARIANT(_cardinality)(CMS_TYPE *self, PyObject *args)
@@ -438,6 +483,9 @@ static PyMethodDef CMS_VARIANT(_methods)[] = {
     },
     {"get", (PyCFunction)CMS_VARIANT(_getitem), METH_VARARGS,
     "Retrieves estimate for the frequency of a single element."
+    },
+    {"multiple_get", (PyCFunction)CMS_VARIANT(_multiple_get), METH_VARARGS,
+     "Retrieves estimates for the frequencies of multiple elements."
     },
     {"cardinality", (PyCFunction)CMS_VARIANT(_cardinality), METH_NOARGS,
     "Retrieves estimate of the set cardinality."

@@ -169,6 +169,12 @@ class CountMinSketch(object):
     def __contains__(self, item):
         return self.cms.get(item)
 
+    def multiple_get(self, keys):
+        """
+        Retrieves estimates for the frequencies of multiple elements.
+        """
+        return self.cms.multiple_get(keys)
+
     def cardinality(self):
         """
         Return an estimate for the number of distinct keys counted by the structure. The estimate should be within 1%.
